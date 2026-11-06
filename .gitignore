@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+
+venv/
+.venv/
+
+.idea/
+
+.env
+
+minio_data/
+postgres_data/
