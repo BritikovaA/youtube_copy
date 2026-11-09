@@ -275,3 +275,18 @@ async def delete_object(object_key: str) -> None:
             Bucket=settings.MINIO_BUCKET,
             Key=object_key,
         )
+
+
+async def create_video_presigned_url(
+    object_key: str,
+    expires_in: int = 3600,
+) -> str:
+    async with get_s3_client() as s3:
+        return await s3.generate_presigned_url(
+            ClientMethod="get_object",
+            Params={
+                "Bucket": settings.MINIO_BUCKET,
+                "Key": object_key,
+            },
+            ExpiresIn=expires_in,
+        )
