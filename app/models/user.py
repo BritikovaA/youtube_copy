@@ -1,13 +1,22 @@
 from datetime import datetime
-from typing import Literal
+from enum import Enum
+from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, String, func
+from sqlalchemy import DateTime, Enum as SQLAlchemyEnum
+from sqlalchemy import String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
 
-UserRole = Literal["user", "admin", "moderator"]
+if TYPE_CHECKING:
+    from app.models.video import Video
+
+
+class UserRole(str, Enum):
+    USER = "user"
+    MODERATOR = "moderator"
+    ADMIN = "admin"
 
 
 class User(Base):
@@ -30,11 +39,20 @@ class User(Base):
         nullable=False,
     )
 
-    role: Mapped[str] = mapped_column(
-        String(20),
+    role: Mapped[UserRole] = mapped_column(
+        SQLAlchemyEnum(
+            UserRole,
+            name="user_role",
+            native_enum=False,
+            create_constraint=False,
+            values_callable=lambda enum_cls: [
+                member.value for member in enum_cls
+            ],
+            length=20,
+        ),
         nullable=False,
-        default="user",
-        server_default="user",
+        default=UserRole.USER,
+        server_default=UserRole.USER.value,
     )
 
     created_at: Mapped[datetime] = mapped_column(
