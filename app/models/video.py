@@ -60,6 +60,13 @@ class Video(Base):
         server_default=text("false"),
     )
 
+    is_hidden: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

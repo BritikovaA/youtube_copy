@@ -5,11 +5,14 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import joinedload
 
 from app.core.dependencies import CurrentUser, DatabaseSession
+from app.models.user import UserRole
 from app.models.video import Video, VideoLike
 from app.schemas.video import (
     VideoDetailResponse,
     VideoLikeResponse,
     VideoListItem,
+    VideoModerationRequest,
+    VideoModerationResponse,
     VideoResponse,
     VideoUploadResponse,
 )
@@ -27,6 +30,14 @@ router = APIRouter(
     prefix="/videos",
     tags=["Videos"],
 )
+
+
+def ensure_moderator(current_user: CurrentUser) -> None:
+    if current_user.role not in (UserRole.MODERATOR, UserRole.ADMIN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Moderator permissions required",
+        )
 
 
 @router.post(
@@ -108,7 +119,10 @@ async def get_videos(
     query = (
         select(Video)
         .options(joinedload(Video.owner))
-        .where(Video.is_private.is_(False))
+        .where(
+            Video.is_private.is_(False),
+            Video.is_hidden.is_(False),
+        )
         .order_by(Video.created_at.desc())
     )
 
@@ -120,7 +134,6 @@ async def get_videos(
         )
 
     result = await db.execute(query)
-
     videos = result.scalars().all()
 
     return [
@@ -140,7 +153,10 @@ async def get_video(
 ) -> VideoDetailResponse:
     update_result = await db.execute(
         update(Video)
-        .where(Video.id == video_id)
+        .where(
+            Video.id == video_id,
+            Video.is_hidden.is_(False),
+        )
         .values(
             views_count=Video.views_count + 1,
         )
@@ -168,7 +184,7 @@ async def get_video(
 
     video = result.scalar_one_or_none()
 
-    if video is None:
+    if video is None or video.is_hidden:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Video not found",
@@ -185,6 +201,7 @@ async def get_video(
         description=video.description,
         views_count=video.views_count,
         is_private=video.is_private,
+        is_hidden=video.is_hidden,
         created_at=video.created_at,
         owner=video.owner,
         video_url=video_url,
@@ -203,7 +220,10 @@ async def toggle_video_like(
 ) -> VideoLikeResponse:
     video = await db.scalar(
         select(Video)
-        .where(Video.id == video_id)
+        .where(
+            Video.id == video_id,
+            Video.is_hidden.is_(False),
+        )
         .with_for_update()
     )
 
@@ -243,4 +263,39 @@ async def toggle_video_like(
     return VideoLikeResponse(
         liked=liked,
         likes_count=int(likes_count or 0),
+    )
+
+
+@router.post(
+    "/{video_id}/moderate",
+    response_model=VideoModerationResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def moderate_video(
+    video_id: int,
+    payload: VideoModerationRequest,
+    current_user: CurrentUser,
+    db: DatabaseSession,
+) -> VideoModerationResponse:
+    ensure_moderator(current_user)
+
+    video = await db.scalar(
+        select(Video)
+        .where(Video.id == video_id)
+        .with_for_update()
+    )
+
+    if video is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found",
+        )
+
+    video.is_hidden = payload.is_hidden
+
+    await db.commit()
+
+    return VideoModerationResponse(
+        video_id=video.id,
+        is_hidden=video.is_hidden,
     )

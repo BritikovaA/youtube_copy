@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload
 
 from app.core.dependencies import CurrentUser, DatabaseSession
@@ -51,6 +51,7 @@ async def get_user_videos(
         .where(
             Video.owner_id == user_id,
             Video.is_private.is_(False),
+            Video.is_hidden.is_(False),
         )
         .order_by(Video.created_at.desc())
     )
@@ -111,14 +112,6 @@ async def toggle_subscription(
         subscribed = True
 
     await db.commit()
-
-    subscribers_count = await db.scalar(
-        select(Subscription.id)
-        .where(Subscription.channel_id == user_id)
-    )
-
-    # Подсчёт количества подписчиков.
-    from sqlalchemy import func
 
     subscribers_count = await db.scalar(
         select(func.count())
