@@ -1,11 +1,11 @@
 from fastapi import APIRouter, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload
 
 from app.core.dependencies import CurrentUser, DatabaseSession
-from app.models.user import User
+from app.models.user import Subscription, User
 from app.models.video import Video
-from app.schemas.user import UserResponse
+from app.schemas.user import SubscriptionResponse, UserResponse
 from app.schemas.video import VideoListItem
 
 
@@ -58,3 +58,64 @@ async def get_user_videos(
         VideoListItem.model_validate(video)
         for video in videos
     ]
+
+
+@router.post(
+    "/{user_id}/subscribe",
+    response_model=SubscriptionResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def toggle_subscription(
+    user_id: int,
+    current_user: CurrentUser,
+    db: DatabaseSession,
+) -> SubscriptionResponse:
+    if current_user.id == user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot subscribe to your own channel",
+        )
+
+    channel = await db.scalar(
+        select(User)
+        .where(User.id == user_id)
+        .with_for_update()
+    )
+
+    if channel is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    existing_subscription = await db.scalar(
+        select(Subscription).where(
+            Subscription.subscriber_id == current_user.id,
+            Subscription.channel_id == user_id,
+        )
+    )
+
+    if existing_subscription is not None:
+        await db.delete(existing_subscription)
+        subscribed = False
+    else:
+        db.add(
+            Subscription(
+                subscriber_id=current_user.id,
+                channel_id=user_id,
+            )
+        )
+        subscribed = True
+
+    await db.commit()
+
+    subscribers_count = await db.scalar(
+        select(func.count())
+        .select_from(Subscription)
+        .where(Subscription.channel_id == user_id)
+    )
+
+    return SubscriptionResponse(
+        subscribed=subscribed,
+        subscribers_count=int(subscribers_count or 0),
+    )
