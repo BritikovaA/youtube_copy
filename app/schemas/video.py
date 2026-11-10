@@ -30,3 +30,8 @@ class VideoDetailResponse(VideoListItem):
 
 class VideoUploadResponse(BaseModel):
     video: VideoResponse
+
+
+class VideoLikeResponse(BaseModel):
+    liked: bool
+    likes_count: int

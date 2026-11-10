@@ -1,13 +1,14 @@
 from typing import Annotated
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import joinedload
 
 from app.core.dependencies import CurrentUser, DatabaseSession
-from app.models.video import Video
+from app.models.video import Video, VideoLike
 from app.schemas.video import (
     VideoDetailResponse,
+    VideoLikeResponse,
     VideoListItem,
     VideoResponse,
     VideoUploadResponse,
@@ -170,4 +171,59 @@ async def get_video(
         created_at=video.created_at,
         owner=video.owner,
         video_url=video_url,
+    )
+
+
+@router.post(
+    "/{video_id}/like",
+    response_model=VideoLikeResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def toggle_video_like(
+    video_id: int,
+    current_user: CurrentUser,
+    db: DatabaseSession,
+) -> VideoLikeResponse:
+    video = await db.scalar(
+        select(Video)
+        .where(Video.id == video_id)
+        .with_for_update()
+    )
+
+    if video is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found",
+        )
+
+    existing_like = await db.scalar(
+        select(VideoLike).where(
+            VideoLike.user_id == current_user.id,
+            VideoLike.video_id == video_id,
+        )
+    )
+
+    if existing_like is not None:
+        await db.delete(existing_like)
+        liked = False
+    else:
+        db.add(
+            VideoLike(
+                user_id=current_user.id,
+                video_id=video_id,
+            )
+        )
+        liked = True
+
+    await db.commit()
+
+    likes_count = await db.scalar(
+        select(func.count())
+        .select_from(VideoLike)
+        .where(VideoLike.video_id == video_id)
+    )
+
+    return VideoLikeResponse(
+        liked=liked,
+        likes_count=int(likes_count or 0),
     )

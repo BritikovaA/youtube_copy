@@ -1,16 +1,24 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
-from app.models.user import User
 
 
 class Video(Base):
     __tablename__ = "videos"
 
     id: Mapped[int] = mapped_column(
+        Integer,
         primary_key=True,
         index=True,
     )
@@ -26,7 +34,7 @@ class Video(Base):
     )
 
     file_path: Mapped[str] = mapped_column(
-        String(1024),
+        String(500),
         nullable=False,
     )
 
@@ -50,5 +58,36 @@ class Video(Base):
     )
 
     owner: Mapped["User"] = relationship(
+        "User",
         back_populates="videos",
+    )
+
+
+class VideoLike(Base):
+    __tablename__ = "video_likes"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "video_id",
+            name="uq_video_likes_user_video",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        index=True,
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    video_id: Mapped[int] = mapped_column(
+        ForeignKey("videos.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
