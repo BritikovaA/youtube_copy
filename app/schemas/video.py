@@ -15,6 +15,7 @@ class VideoResponse(BaseModel):
     title: str
     description: str | None
     views_count: int
+    is_private: bool
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

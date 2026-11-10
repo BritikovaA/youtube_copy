@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import joinedload
 
@@ -39,6 +39,7 @@ async def upload_video_endpoint(
     db: DatabaseSession,
     title: Annotated[str, Form(min_length=1, max_length=255)],
     description: Annotated[str | None, Form(max_length=10000)] = None,
+    is_private: Annotated[bool, Form()] = False,
     file: UploadFile = File(...),
 ) -> VideoUploadResponse:
     try:
@@ -70,6 +71,7 @@ async def upload_video_endpoint(
             description=description,
             file_path=object_key,
             owner_id=current_user.id,
+            is_private=is_private,
         )
 
         db.add(video)
@@ -98,12 +100,26 @@ async def upload_video_endpoint(
 )
 async def get_videos(
     db: DatabaseSession,
+    search: Annotated[
+        str | None,
+        Query(min_length=1, max_length=255),
+    ] = None,
 ) -> list[VideoListItem]:
-    result = await db.execute(
+    query = (
         select(Video)
         .options(joinedload(Video.owner))
+        .where(Video.is_private.is_(False))
         .order_by(Video.created_at.desc())
     )
+
+    normalized_search = search.strip() if search else None
+
+    if normalized_search:
+        query = query.where(
+            Video.title.ilike(f"%{normalized_search}%")
+        )
+
+    result = await db.execute(query)
 
     videos = result.scalars().all()
 
@@ -168,6 +184,7 @@ async def get_video(
         title=video.title,
         description=video.description,
         views_count=video.views_count,
+        is_private=video.is_private,
         created_at=video.created_at,
         owner=video.owner,
         video_url=video_url,
