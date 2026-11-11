@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Загрузка видео — YouTube Copy</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script type="module" src="/js/upload.js"></script>
+</head>
+<body>
+    <header class="site-header">
+        <a class="logo" href="/">YouTube Copy</a>
+
+        <nav class="header-nav">
+            <a href="/">Главная</a>
+        </nav>
+
+        <div class="header-actions" id="auth-actions">
+            <a class="button button-secondary" href="/auth.html?mode=login">Войти</a>
+        </div>
+    </header>
+
+    <main class="container upload-container">
+        <section class="form-card">
+            <h1>Загрузка видео</h1>
+
+            <form id="upload-form">
+                <label for="title">Название видео</label>
+                <input
+                    type="text"
+                    id="title"
+                    name="title"
+                    maxlength="255"
+                    required
+                >
+
+                <label for="description">Описание</label>
+                <textarea
+                    id="description"
+                    name="description"
+                    rows="6"
+                    maxlength="10000"
+                ></textarea>
+
+                <label for="file">Видео</label>
+                <input
+                    type="file"
+                    id="file"
+                    name="file"
+                    accept="video/*"
+                    required
+                >
+
+                <label class="checkbox-label">
+                    <input type="checkbox" id="is-private" name="is_private">
+                    Приватное видео
+                </label>
+
+                <p class="form-hint">
+                    Приватное видео не отображается в ленте и на странице канала,
+                    но доступно по прямой ссылке.
+                </p>
+
+                <button type="submit" id="upload-submit" class="button button-primary button-full">
+                    Загрузить
+                </button>
+
+                <div id="upload-message" class="message" hidden></div>
+            </form>
+        </section>
+    </main>
+</body>
+</html>

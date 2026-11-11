@@ -1,8 +1,11 @@
+
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.routers import auth, users, videos
@@ -14,6 +17,8 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 
 @asynccontextmanager
@@ -40,8 +45,18 @@ app.include_router(users.router)
 app.include_router(videos.router)
 
 
-@app.get("/")
-async def root() -> dict[str, str]:
+@app.get("/health")
+async def health() -> dict[str, str]:
     return {
         "message": "YouTube Copy API is running",
     }
+
+
+app.mount(
+    "/",
+    StaticFiles(
+        directory=STATIC_DIR,
+        html=True,
+    ),
+    name="frontend",
+)

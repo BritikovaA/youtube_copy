@@ -1,3 +1,4 @@
+
 services:
   app:
     build:
@@ -16,6 +17,7 @@ services:
         condition: service_started
     volumes:
       - ./app:/app/app
+      - ./static:/app/static
 
   db:
     image: postgres:15

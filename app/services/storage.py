@@ -3,7 +3,7 @@ import asyncio
 import logging
 import uuid
 from pathlib import Path
-from typing import TypedDict
+from typing import Any, TypedDict
 
 import aioboto3
 from botocore.config import Config
@@ -41,12 +41,12 @@ class UploadTooLargeError(Exception):
     """Uploaded video exceeds the configured size limit."""
 
 
-def get_s3_client():
+def get_s3_client(endpoint_url: str | None = None) -> Any:
     session = aioboto3.Session()
 
     return session.client(
         "s3",
-        endpoint_url=settings.MINIO_ENDPOINT,
+        endpoint_url=endpoint_url or settings.MINIO_ENDPOINT,
         aws_access_key_id=settings.MINIO_ACCESS_KEY,
         aws_secret_access_key=settings.MINIO_SECRET_KEY,
         region_name=settings.MINIO_REGION,
@@ -281,7 +281,9 @@ async def create_video_presigned_url(
     object_key: str,
     expires_in: int = 3600,
 ) -> str:
-    async with get_s3_client() as s3:
+    async with get_s3_client(
+        endpoint_url=settings.MINIO_PUBLIC_ENDPOINT,
+    ) as s3:
         return await s3.generate_presigned_url(
             ClientMethod="get_object",
             Params={

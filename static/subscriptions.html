@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мои подписки — YouTube Copy</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script type="module" src="/js/subscriptions.js"></script>
+</head>
+<body>
+    <header class="site-header">
+        <a class="logo" href="/">YouTube Copy</a>
+
+        <nav class="header-nav">
+            <a href="/">Главная</a>
+            <a href="/upload.html" id="upload-link" hidden>Загрузить видео</a>
+        </nav>
+
+        <div class="header-actions" id="auth-actions">
+            <a class="button button-secondary" href="/auth.html?mode=login">Войти</a>
+            <a class="button button-primary" href="/auth.html?mode=register">Регистрация</a>
+        </div>
+    </header>
+
+    <main class="container">
+        <h1>Мои подписки</h1>
+
+        <div id="subscriptions-message" class="message" hidden></div>
+        <section id="subscriptions-list" class="videos-grid"></section>
+    </main>
+</body>
+</html>

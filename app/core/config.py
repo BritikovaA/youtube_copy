@@ -1,3 +1,4 @@
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,6 +10,8 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
     MINIO_ENDPOINT: str = "http://rustfs:9000"
+    MINIO_PUBLIC_ENDPOINT: str = "http://localhost:9000"
+
     MINIO_ACCESS_KEY: str
     MINIO_SECRET_KEY: str
     MINIO_BUCKET: str = "videos"

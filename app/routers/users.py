@@ -1,3 +1,4 @@
+
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload
@@ -5,7 +6,11 @@ from sqlalchemy.orm import joinedload
 from app.core.dependencies import CurrentUser, DatabaseSession
 from app.models.user import Subscription, User
 from app.models.video import Video
-from app.schemas.user import SubscriptionResponse, UserResponse
+from app.schemas.user import (
+    SubscribedChannelResponse,
+    SubscriptionResponse,
+    UserResponse,
+)
 from app.schemas.video import VideoListItem
 
 
@@ -24,6 +29,79 @@ async def get_current_user(
     current_user: CurrentUser,
 ) -> UserResponse:
     return UserResponse.model_validate(current_user)
+
+
+@router.get(
+    "/subscriptions",
+    response_model=list[SubscribedChannelResponse],
+    status_code=status.HTTP_200_OK,
+)
+async def get_subscriptions(
+    current_user: CurrentUser,
+    db: DatabaseSession,
+) -> list[SubscribedChannelResponse]:
+    result = await db.execute(
+        select(User)
+        .join(
+            Subscription,
+            Subscription.channel_id == User.id,
+        )
+        .where(
+            Subscription.subscriber_id == current_user.id,
+        )
+        .order_by(User.created_at.desc())
+    )
+
+    channels = result.scalars().all()
+
+    return [
+        SubscribedChannelResponse.model_validate(channel)
+        for channel in channels
+    ]
+
+
+@router.get(
+    "/{user_id}/subscription",
+    response_model=SubscriptionResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_subscription_status(
+    user_id: int,
+    current_user: CurrentUser,
+    db: DatabaseSession,
+) -> SubscriptionResponse:
+    channel_exists = await db.scalar(
+        select(User.id).where(User.id == user_id)
+    )
+
+    if channel_exists is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    subscribed = False
+
+    if current_user.id != user_id:
+        subscription_exists = await db.scalar(
+            select(Subscription.id).where(
+                Subscription.subscriber_id == current_user.id,
+                Subscription.channel_id == user_id,
+            )
+        )
+
+        subscribed = subscription_exists is not None
+
+    subscribers_count = await db.scalar(
+        select(func.count())
+        .select_from(Subscription)
+        .where(Subscription.channel_id == user_id)
+    )
+
+    return SubscriptionResponse(
+        subscribed=subscribed,
+        subscribers_count=int(subscribers_count or 0),
+    )
 
 
 @router.get(

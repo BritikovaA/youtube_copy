@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Просмотр видео — YouTube Copy</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script type="module" src="/js/video.js"></script>
+</head>
+<body>
+    <header class="site-header">
+        <a class="logo" href="/">YouTube Copy</a>
+
+        <nav class="header-nav">
+            <a href="/">Главная</a>
+            <a href="/upload.html" id="upload-link" hidden>Загрузить видео</a>
+        </nav>
+
+        <div class="header-actions" id="auth-actions">
+            <a class="button button-secondary" href="/auth.html?mode=login">Войти</a>
+            <a class="button button-primary" href="/auth.html?mode=register">Регистрация</a>
+        </div>
+    </header>
+
+    <main class="container">
+        <div id="video-message" class="message" hidden></div>
+
+        <section id="video-content" hidden>
+            <video
+                id="video-player"
+                class="video-player"
+                controls
+                playsinline
+                preload="metadata"
+            ></video>
+
+            <h1 id="video-title"></h1>
+
+            <div class="video-meta">
+                <span id="video-views"></span>
+                <span id="video-date"></span>
+            </div>
+
+            <div class="video-actions">
+                <button id="like-button" class="button button-secondary">
+                    Нравится
+                </button>
+
+                <span id="like-message" class="action-message"></span>
+            </div>
+
+            <section class="channel-info">
+                <div>
+                    <h2 id="channel-email"></h2>
+                    <a id="channel-link" href="#">Открыть канал</a>
+                </div>
+
+                <button id="subscribe-button" class="button button-primary">
+                    Подписаться
+                </button>
+            </section>
+
+            <section class="video-description">
+                <h2>Описание</h2>
+                <p id="video-description"></p>
+            </section>
+        </section>
+    </main>
+</body>
+</html>
