@@ -1,3 +1,4 @@
+
 FROM python:3.12
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -11,6 +12,9 @@ RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+COPY alembic ./alembic
+COPY alembic.ini ./alembic.ini
+COPY seed_data ./seed_data
 
 EXPOSE 8000
 

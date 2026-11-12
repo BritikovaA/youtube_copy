@@ -15,9 +15,31 @@ services:
         condition: service_healthy
       rustfs:
         condition: service_started
+      seed:
+        condition: service_completed_successfully
     volumes:
       - ./app:/app/app
       - ./static:/app/static
+
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: youtube-copy-seed
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      DATABASE_HOST_LOCAL: db
+    command:
+      - sh
+      - -c
+      - alembic upgrade head && python -m app.seed
+    depends_on:
+      db:
+        condition: service_healthy
+      rustfs:
+        condition: service_started
 
   db:
     image: postgres:15

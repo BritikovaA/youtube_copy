@@ -109,6 +109,7 @@ async def get_accessible_video(
     return video
 
 
+
 @router.post(
     "/upload",
     response_model=VideoUploadResponse,
@@ -125,9 +126,15 @@ async def upload_video_endpoint(
     file_path: str | None = None
 
     try:
-        await validate_video(file)
+        extension = validate_video(
+            filename=file.filename,
+            content_type=file.content_type,
+        )
 
-        file_path = await upload_video(file)
+        file_path, _ = await upload_video(
+            file=file,
+            extension=extension,
+        )
 
         video = Video(
             title=title,
@@ -145,6 +152,7 @@ async def upload_video_endpoint(
 
     except (InvalidVideoError, UploadTooLargeError):
         raise
+
     except Exception:
         await db.rollback()
 
