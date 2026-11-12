@@ -1,0 +1,45 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Модерация видео</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <header class="site-header">
+        <div class="container header-nav">
+            <a href="/" class="logo">YouTube Copy</a>
+
+            <nav class="header-actions" id="auth-actions" hidden></nav>
+
+            <a href="/upload.html" id="upload-link" class="button button-primary" hidden>
+                Загрузить видео
+            </a>
+        </div>
+    </header>
+
+    <main class="container moderation-page">
+        <h1>Модерация видео</h1>
+
+        <p class="moderation-description">
+            Просматривайте видео, на которые поступили жалобы, и принимайте решение.
+        </p>
+
+        <div id="moderation-message" class="message" hidden></div>
+
+        <div id="moderation-loading" class="message" hidden>
+            Загрузка очереди модерации...
+        </div>
+
+        <div id="moderation-list" class="moderation-list"></div>
+
+        <p id="moderation-empty" class="moderation-empty" hidden>
+            Жалоб на проверку нет.
+        </p>
+    </main>
+
+    <script type="module" src="/js/moderation.js"></script>
+</body>
+</html>

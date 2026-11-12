@@ -4,6 +4,7 @@ import {
     getToken,
     initHeader,
     showMessage,
+    submitVideoReport,
 } from "./common.js";
 
 
@@ -20,6 +21,12 @@ const date = document.querySelector("#video-date");
 const likeButton = document.querySelector("#like-button");
 const likeMessage = document.querySelector("#like-message");
 const likeCount = document.querySelector("#like-count");
+
+const reportButton = document.querySelector("#report-button");
+const reportMessage = document.querySelector("#report-message");
+
+const moderationBadge = document.querySelector("#video-moderation-badge");
+const reportedBadge = document.querySelector("#video-reported-badge");
 
 const channelEmail = document.querySelector("#channel-email");
 const channelLink = document.querySelector("#channel-link");
@@ -81,6 +88,25 @@ async function toggleLike() {
         showMessage(likeMessage, error.message);
     } finally {
         likeButton.disabled = false;
+    }
+}
+
+
+async function submitReport() {
+    reportButton.disabled = true;
+
+    try {
+        await submitVideoReport(videoId);
+
+        reportButton.hidden = true;
+        reportMessage.textContent = "Жалоба отправлена на модерацию.";
+        reportMessage.className = "report-message report-message-success";
+        reportMessage.hidden = false;
+
+        reportedBadge.hidden = false;
+    } catch (error) {
+        reportButton.disabled = false;
+        showMessage(reportMessage, error.message);
     }
 }
 
@@ -247,6 +273,15 @@ async function submitComment(event) {
 }
 
 
+function renderModerationStatus() {
+    moderationBadge.hidden = !currentVideo.is_hidden;
+    reportedBadge.hidden = !currentVideo.is_reported;
+
+    reportButton.hidden =
+        currentVideo.is_hidden || currentVideo.is_reported;
+}
+
+
 async function loadVideo() {
     if (!videoId || !/^\d+$/.test(videoId)) {
         showMessage(pageMessage, "Некорректный ID видео.");
@@ -272,6 +307,7 @@ async function loadVideo() {
 
         likeCount.textContent = `${currentVideo.likes_count} лайков`;
 
+        renderModerationStatus();
         initCommentForm();
 
         await Promise.all([
@@ -288,6 +324,7 @@ async function loadVideo() {
 
 
 likeButton.addEventListener("click", toggleLike);
+reportButton.addEventListener("click", submitReport);
 subscribeButton.addEventListener("click", toggleSubscription);
 commentForm.addEventListener("submit", submitComment);
 

@@ -130,7 +130,6 @@ async def get_my_videos(
         .options(joinedload(Video.owner))
         .where(
             Video.owner_id == current_user.id,
-            Video.is_hidden.is_(False),
         )
         .order_by(Video.created_at.desc()),
     )

@@ -1,6 +1,16 @@
+
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -9,6 +19,7 @@ from app.core.dependencies import (
     CurrentUser,
     DatabaseSession,
     OptionalCurrentUser,
+    require_roles,
 )
 from app.models.user import User, UserRole
 from app.models.video import Comment, Video, VideoLike
@@ -18,12 +29,14 @@ from app.schemas.comment import (
     CommentResponse,
 )
 from app.schemas.video import (
+    VideoAuthorResponse,
     VideoDetailResponse,
     VideoLikeResponse,
     VideoListItem,
+    VideoModerationQueueItem,
     VideoModerationRequest,
     VideoModerationResponse,
-    VideoResponse,
+    VideoReportResponse,
     VideoUploadResponse,
 )
 from app.services.storage import (
@@ -40,6 +53,12 @@ router = APIRouter(
     prefix="/videos",
     tags=["Videos"],
 )
+
+
+ModeratorUser = Annotated[
+    User,
+    Depends(require_roles(UserRole.MODERATOR)),
+]
 
 
 async def get_likes_count(
@@ -66,6 +85,10 @@ async def get_accessible_video(
     video = result.scalar_one_or_none()
 
     if video is None or video.is_hidden:
+        if video is not None and current_user is not None:
+            if video.owner_id == current_user.id:
+                return video
+
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Video not found",
@@ -132,6 +155,39 @@ async def upload_video_endpoint(
 
 
 @router.get(
+    "/moderation",
+    response_model=list[VideoModerationQueueItem],
+)
+async def get_moderation_queue(
+    moderator: ModeratorUser,
+    db: DatabaseSession,
+) -> list[VideoModerationQueueItem]:
+    result = await db.execute(
+        select(Video)
+        .options(joinedload(Video.owner))
+        .where(Video.is_reported.is_(True))
+        .order_by(Video.created_at.asc()),
+    )
+
+    videos = result.scalars().unique().all()
+
+    moderation_items: list[VideoModerationQueueItem] = []
+
+    for video in videos:
+        video_data = VideoListItem.model_validate(video)
+        video_url = await create_video_presigned_url(video.file_path)
+
+        moderation_items.append(
+            VideoModerationQueueItem(
+                **video_data.model_dump(),
+                video_url=video_url,
+            ),
+        )
+
+    return moderation_items
+
+
+@router.get(
     "",
     response_model=list[VideoListItem],
 )
@@ -173,18 +229,24 @@ async def get_video(
     )
     video = result.scalar_one_or_none()
 
-    if video is None or video.is_hidden:
+    if video is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Video not found",
         )
 
-    if (
-        video.is_private
-        and (
-            current_user is None
-            or current_user.id != video.owner_id
+    if video.is_hidden and (
+        current_user is None
+        or current_user.id != video.owner_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found",
         )
+
+    if video.is_private and (
+        current_user is None
+        or current_user.id != video.owner_id
     ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -209,6 +271,7 @@ async def get_video(
         views_count=video.views_count,
         is_private=video.is_private,
         is_hidden=video.is_hidden,
+        is_reported=video.is_reported,
         created_at=video.created_at,
         owner=video.owner,
         video_url=video_url,
@@ -234,8 +297,6 @@ async def get_video_comments(
         .order_by(Comment.created_at.desc()),
     )
 
-    rows = result.all()
-
     return [
         CommentResponse(
             id=comment.id,
@@ -245,7 +306,7 @@ async def get_video_comments(
             created_at=comment.created_at,
             author=CommentAuthorResponse.model_validate(user),
         )
-        for comment, user in rows
+        for comment, user in result.all()
     ]
 
 
@@ -382,28 +443,61 @@ async def toggle_video_like(
 
 
 @router.post(
-    "/{video_id}/moderate",
+    "/{video_id}/report",
+    response_model=VideoReportResponse,
+)
+async def report_video(
+    video_id: int,
+    db: DatabaseSession,
+    current_user: OptionalCurrentUser,
+) -> VideoReportResponse:
+    video = await get_accessible_video(
+        video_id,
+        db,
+        current_user,
+    )
+
+    if video.is_hidden:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Video is already hidden",
+        )
+
+    if video.is_reported:
+        return VideoReportResponse(
+            video_id=video.id,
+            is_reported=True,
+            message="Video has already been reported",
+        )
+
+    video.is_reported = True
+
+    await db.commit()
+
+    return VideoReportResponse(
+        video_id=video.id,
+        is_reported=True,
+        message="Report submitted successfully",
+    )
+
+
+@router.patch(
+    "/{video_id}/moderation",
     response_model=VideoModerationResponse,
 )
 async def moderate_video(
     video_id: int,
     request: VideoModerationRequest,
-    current_user: CurrentUser,
+    moderator: ModeratorUser,
     db: DatabaseSession,
 ) -> VideoModerationResponse:
-    if current_user.role not in {
-        UserRole.MODERATOR,
-        UserRole.ADMIN,
-    }:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have permission to moderate videos",
-        )
-
     result = await db.execute(
         update(Video)
         .where(Video.id == video_id)
-        .values(is_hidden=request.is_hidden)
+        .values(
+            is_hidden=request.is_hidden,
+            is_reported=False,
+        )
         .returning(Video.id),
     )
 
@@ -420,4 +514,5 @@ async def moderate_video(
     return VideoModerationResponse(
         video_id=updated_video_id,
         is_hidden=request.is_hidden,
+        is_reported=False,
     )

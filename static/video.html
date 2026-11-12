@@ -30,6 +30,22 @@
 
     <main class="container">
         <section id="video-content" hidden>
+            <div
+                id="video-moderation-badge"
+                class="video-moderation-badge video-moderation-notice"
+                hidden
+            >
+                Видео нарушает правила платформы и скрыто от других пользователей.
+            </div>
+
+            <div
+                id="video-reported-badge"
+                class="video-reported-badge video-moderation-notice"
+                hidden
+            >
+                Видео отправлено на проверку модератору.
+            </div>
+
             <video
                 id="video-player"
                 class="video-player"
@@ -55,6 +71,18 @@
 
                 <span id="like-count" class="like-count">0 лайков</span>
                 <span id="like-message" class="action-message" hidden></span>
+            </div>
+
+            <div class="video-actions">
+                <button
+                    id="report-button"
+                    class="button button-report"
+                    type="button"
+                >
+                    Пожаловаться
+                </button>
+
+                <span id="report-message" class="report-message" hidden></span>
             </div>
 
             <div class="channel-info">

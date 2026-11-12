@@ -1,3 +1,4 @@
+
 export const API_BASE = "";
 
 export function getToken() {
@@ -75,6 +76,15 @@ export function formatDate(value) {
     }).format(new Date(value));
 }
 
+export async function submitVideoReport(videoId) {
+    return apiRequest(
+        `/videos/${encodeURIComponent(videoId)}/report`,
+        {
+            method: "POST",
+        },
+    );
+}
+
 export function createVideoCard(video) {
     const article = document.createElement("article");
     article.className = "video-card";
@@ -111,6 +121,52 @@ export function createVideoCard(video) {
         privacy.textContent = "Приватное";
         content.append(privacy);
     }
+
+    if (video.is_hidden) {
+        const moderationBadge = document.createElement("span");
+        moderationBadge.className = "video-moderation-badge";
+        moderationBadge.textContent = "Нарушает правила";
+        content.append(moderationBadge);
+    } else if (video.is_reported) {
+        const reportedBadge = document.createElement("span");
+        reportedBadge.className = "video-reported-badge";
+        reportedBadge.textContent = "На проверке";
+        content.append(reportedBadge);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "video-card-actions";
+
+    const reportButton = document.createElement("button");
+    reportButton.className = "button button-report";
+    reportButton.type = "button";
+    reportButton.textContent = "Пожаловаться";
+    reportButton.hidden = video.is_hidden || video.is_reported;
+
+    const reportMessage = document.createElement("span");
+    reportMessage.className = "report-message";
+    reportMessage.hidden = true;
+
+    reportButton.addEventListener("click", async () => {
+        reportButton.disabled = true;
+
+        try {
+            await submitVideoReport(video.id);
+
+            reportButton.hidden = true;
+            reportMessage.textContent = "Жалоба отправлена";
+            reportMessage.className = "report-message report-message-success";
+            reportMessage.hidden = false;
+        } catch (error) {
+            reportButton.disabled = false;
+            reportMessage.textContent = error.message;
+            reportMessage.className = "report-message report-message-error";
+            reportMessage.hidden = false;
+        }
+    });
+
+    actions.append(reportButton, reportMessage);
+    content.append(actions);
 
     article.append(previewLink, content);
 
@@ -161,8 +217,18 @@ export async function initHeader() {
         actions.append(
             channelLink,
             subscriptionsLink,
-            logoutButton,
         );
+
+        if (user.role === "moderator") {
+            const moderationLink = document.createElement("a");
+            moderationLink.className = "button button-secondary";
+            moderationLink.href = "/moderation.html";
+            moderationLink.textContent = "Модерация видео";
+
+            actions.append(moderationLink);
+        }
+
+        actions.append(logoutButton);
 
         if (uploadLink) {
             uploadLink.hidden = false;
