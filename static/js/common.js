@@ -83,6 +83,7 @@ export function createVideoCard(video) {
     previewLink.className = "video-preview";
     previewLink.href = `/video.html?id=${encodeURIComponent(video.id)}`;
     previewLink.textContent = "▶";
+    previewLink.setAttribute("aria-label", `Открыть видео: ${video.title}`);
 
     const content = document.createElement("div");
     content.className = "video-card-content";
@@ -103,6 +104,14 @@ export function createVideoCard(video) {
         `${video.views_count} просмотров · ${formatDate(video.created_at)}`;
 
     content.append(title, author, meta);
+
+    if (video.is_private) {
+        const privacy = document.createElement("span");
+        privacy.className = "video-privacy";
+        privacy.textContent = "Приватное";
+        content.append(privacy);
+    }
+
     article.append(previewLink, content);
 
     return article;
@@ -111,7 +120,6 @@ export function createVideoCard(video) {
 export async function initHeader() {
     const actions = document.querySelector("#auth-actions");
     const uploadLink = document.querySelector("#upload-link");
-    const navigation = document.querySelector(".header-nav");
 
     if (!actions) {
         return;
@@ -120,6 +128,7 @@ export async function initHeader() {
     const token = getToken();
 
     if (!token) {
+        actions.hidden = false;
         return;
     }
 
@@ -127,12 +136,17 @@ export async function initHeader() {
         const user = await apiRequest("/users/me");
 
         actions.replaceChildren();
+        actions.hidden = false;
 
         const channelLink = document.createElement("a");
         channelLink.className = "button button-secondary";
-        channelLink.href =
-            `/channel.html?id=${encodeURIComponent(user.id)}`;
+        channelLink.href = `/channel.html?id=${encodeURIComponent(user.id)}`;
         channelLink.textContent = "Мой канал";
+
+        const subscriptionsLink = document.createElement("a");
+        subscriptionsLink.className = "button button-secondary";
+        subscriptionsLink.href = "/subscriptions.html";
+        subscriptionsLink.textContent = "Подписки";
 
         const logoutButton = document.createElement("button");
         logoutButton.className = "button button-secondary";
@@ -144,22 +158,22 @@ export async function initHeader() {
             window.location.href = "/";
         });
 
-        actions.append(channelLink, logoutButton);
+        actions.append(
+            channelLink,
+            subscriptionsLink,
+            logoutButton,
+        );
 
         if (uploadLink) {
             uploadLink.hidden = false;
         }
-
-        if (navigation && !navigation.querySelector("#subscriptions-link")) {
-            const subscriptionsLink = document.createElement("a");
-            subscriptionsLink.id = "subscriptions-link";
-            subscriptionsLink.href = "/subscriptions.html";
-            subscriptionsLink.textContent = "Мои подписки";
-
-            navigation.append(subscriptionsLink);
-        }
     } catch {
         removeToken();
+        actions.hidden = false;
+
+        if (uploadLink) {
+            uploadLink.hidden = true;
+        }
     }
 }
 

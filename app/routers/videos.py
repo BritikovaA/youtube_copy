@@ -4,7 +4,11 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, sta
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import joinedload
 
-from app.core.dependencies import CurrentUser, DatabaseSession
+from app.core.dependencies import (
+    CurrentUser,
+    DatabaseSession,
+    OptionalCurrentUser,
+)
 from app.models.user import UserRole
 from app.models.video import Video, VideoLike
 from app.schemas.video import (
@@ -32,12 +36,17 @@ router = APIRouter(
 )
 
 
-def ensure_moderator(current_user: CurrentUser) -> None:
-    if current_user.role not in (UserRole.MODERATOR, UserRole.ADMIN):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Moderator permissions required",
-        )
+async def get_likes_count(
+    db: DatabaseSession,
+    video_id: int,
+) -> int:
+    result = await db.execute(
+        select(func.count())
+        .select_from(VideoLike)
+        .where(VideoLike.video_id == video_id),
+    )
+
+    return result.scalar_one()
 
 
 @router.post(
@@ -48,39 +57,20 @@ def ensure_moderator(current_user: CurrentUser) -> None:
 async def upload_video_endpoint(
     current_user: CurrentUser,
     db: DatabaseSession,
-    title: Annotated[str, Form(min_length=1, max_length=255)],
-    description: Annotated[str | None, Form(max_length=10000)] = None,
+    file: Annotated[UploadFile, File()],
+    title: Annotated[str, Form()],
+    description: Annotated[str | None, Form()] = None,
     is_private: Annotated[bool, Form()] = False,
-    file: UploadFile = File(...),
 ) -> VideoUploadResponse:
     try:
-        extension = validate_video(
-            file.filename,
-            file.content_type,
-        )
+        await validate_video(file)
 
-        object_key, _ = await upload_video(
-            file,
-            extension,
-        )
+        file_path = await upload_video(file)
 
-    except InvalidVideoError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        ) from exc
-
-    except UploadTooLargeError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=str(exc),
-        ) from exc
-
-    try:
         video = Video(
-            title=title.strip(),
+            title=title,
             description=description,
-            file_path=object_key,
+            file_path=file_path,
             owner_id=current_user.id,
             is_private=is_private,
         )
@@ -89,33 +79,27 @@ async def upload_video_endpoint(
         await db.commit()
         await db.refresh(video)
 
+        return VideoUploadResponse(video=video)
+
+    except (InvalidVideoError, UploadTooLargeError):
+        raise
     except Exception:
         await db.rollback()
 
-        try:
-            await delete_object(object_key)
-        except Exception:
-            pass
+        if "file_path" in locals():
+            await delete_object(file_path)
 
         raise
-
-    return VideoUploadResponse(
-        video=VideoResponse.model_validate(video),
-    )
 
 
 @router.get(
     "",
     response_model=list[VideoListItem],
-    status_code=status.HTTP_200_OK,
 )
 async def get_videos(
     db: DatabaseSession,
-    search: Annotated[
-        str | None,
-        Query(min_length=1, max_length=255),
-    ] = None,
-) -> list[VideoListItem]:
+    search: Annotated[str | None, Query()] = None,
+) -> list[Video]:
     query = (
         select(Video)
         .options(joinedload(Video.owner))
@@ -126,62 +110,28 @@ async def get_videos(
         .order_by(Video.created_at.desc())
     )
 
-    normalized_search = search.strip() if search else None
-
-    if normalized_search:
-        query = query.where(
-            Video.title.ilike(f"%{normalized_search}%")
-        )
+    if search:
+        query = query.where(Video.title.ilike(f"%{search}%"))
 
     result = await db.execute(query)
-    videos = result.scalars().all()
 
-    return [
-        VideoListItem.model_validate(video)
-        for video in videos
-    ]
+    return list(result.scalars().unique().all())
 
 
 @router.get(
     "/{video_id}",
     response_model=VideoDetailResponse,
-    status_code=status.HTTP_200_OK,
 )
 async def get_video(
     video_id: int,
     db: DatabaseSession,
+    current_user: OptionalCurrentUser,
 ) -> VideoDetailResponse:
-    update_result = await db.execute(
-        update(Video)
-        .where(
-            Video.id == video_id,
-            Video.is_hidden.is_(False),
-        )
-        .values(
-            views_count=Video.views_count + 1,
-        )
-        .returning(Video.id)
-        .execution_options(synchronize_session=False)
-    )
-
-    updated_video_id = update_result.scalar_one_or_none()
-
-    if updated_video_id is None:
-        await db.rollback()
-
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Video not found",
-        )
-
-    await db.commit()
-
     result = await db.execute(
         select(Video)
         .options(joinedload(Video.owner))
-        .where(Video.id == video_id)
+        .where(Video.id == video_id),
     )
-
     video = result.scalar_one_or_none()
 
     if video is None or video.is_hidden:
@@ -190,10 +140,29 @@ async def get_video(
             detail="Video not found",
         )
 
-    video_url = await create_video_presigned_url(
-        object_key=video.file_path,
-        expires_in=3600,
+    if (
+        video.is_private
+        and (
+            current_user is None
+            or current_user.id != video.owner_id
+        )
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found",
+        )
+
+    await db.execute(
+        update(Video)
+        .where(Video.id == video_id)
+        .values(views_count=Video.views_count + 1),
     )
+    await db.commit()
+    await db.refresh(video)
+
+    likes_count = await get_likes_count(db, video_id)
+
+    video_url = await create_video_presigned_url(video.file_path)
 
     return VideoDetailResponse(
         id=video.id,
@@ -205,27 +174,84 @@ async def get_video(
         created_at=video.created_at,
         owner=video.owner,
         video_url=video_url,
+        likes_count=likes_count,
+    )
+
+
+@router.get(
+    "/{video_id}/like",
+    response_model=VideoLikeResponse,
+)
+async def get_video_like_status(
+    video_id: int,
+    db: DatabaseSession,
+    current_user: OptionalCurrentUser,
+) -> VideoLikeResponse:
+    video_result = await db.execute(
+        select(Video).where(
+            Video.id == video_id,
+            Video.is_hidden.is_(False),
+        ),
+    )
+    video = video_result.scalar_one_or_none()
+
+    if video is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found",
+        )
+
+    if (
+        video.is_private
+        and (
+            current_user is None
+            or current_user.id != video.owner_id
+        )
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found",
+        )
+
+    likes_count = await get_likes_count(db, video_id)
+
+    if current_user is None:
+        return VideoLikeResponse(
+            liked=False,
+            likes_count=likes_count,
+        )
+
+    like_result = await db.execute(
+        select(VideoLike).where(
+            VideoLike.video_id == video_id,
+            VideoLike.user_id == current_user.id,
+        ),
+    )
+
+    return VideoLikeResponse(
+        liked=like_result.scalar_one_or_none() is not None,
+        likes_count=likes_count,
     )
 
 
 @router.post(
     "/{video_id}/like",
     response_model=VideoLikeResponse,
-    status_code=status.HTTP_200_OK,
 )
 async def toggle_video_like(
     video_id: int,
     current_user: CurrentUser,
     db: DatabaseSession,
 ) -> VideoLikeResponse:
-    video = await db.scalar(
+    video_result = await db.execute(
         select(Video)
         .where(
             Video.id == video_id,
             Video.is_hidden.is_(False),
         )
-        .with_for_update()
+        .with_for_update(),
     )
+    video = video_result.scalar_one_or_none()
 
     if video is None:
         raise HTTPException(
@@ -233,69 +259,81 @@ async def toggle_video_like(
             detail="Video not found",
         )
 
-    existing_like = await db.scalar(
-        select(VideoLike).where(
-            VideoLike.user_id == current_user.id,
-            VideoLike.video_id == video_id,
+    if video.is_private and video.owner_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found",
         )
-    )
 
-    if existing_like is not None:
-        await db.delete(existing_like)
-        liked = False
-    else:
+    like_result = await db.execute(
+        select(VideoLike).where(
+            VideoLike.video_id == video_id,
+            VideoLike.user_id == current_user.id,
+        ),
+    )
+    like = like_result.scalar_one_or_none()
+
+    if like is None:
         db.add(
             VideoLike(
-                user_id=current_user.id,
                 video_id=video_id,
-            )
+                user_id=current_user.id,
+            ),
         )
         liked = True
+    else:
+        await db.delete(like)
+        liked = False
+
+    await db.flush()
+
+    likes_count = await get_likes_count(db, video_id)
 
     await db.commit()
 
-    likes_count = await db.scalar(
-        select(func.count())
-        .select_from(VideoLike)
-        .where(VideoLike.video_id == video_id)
-    )
-
     return VideoLikeResponse(
         liked=liked,
-        likes_count=int(likes_count or 0),
+        likes_count=likes_count,
     )
 
 
 @router.post(
     "/{video_id}/moderate",
     response_model=VideoModerationResponse,
-    status_code=status.HTTP_200_OK,
 )
 async def moderate_video(
     video_id: int,
-    payload: VideoModerationRequest,
+    request: VideoModerationRequest,
     current_user: CurrentUser,
     db: DatabaseSession,
 ) -> VideoModerationResponse:
-    ensure_moderator(current_user)
+    if current_user.role not in {
+        UserRole.MODERATOR,
+        UserRole.ADMIN,
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to moderate videos",
+        )
 
-    video = await db.scalar(
-        select(Video)
+    result = await db.execute(
+        update(Video)
         .where(Video.id == video_id)
-        .with_for_update()
+        .values(is_hidden=request.is_hidden)
+        .returning(Video.id),
     )
 
-    if video is None:
+    updated_video_id = result.scalar_one_or_none()
+
+    if updated_video_id is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Video not found",
         )
 
-    video.is_hidden = payload.is_hidden
-
     await db.commit()
 
     return VideoModerationResponse(
-        video_id=video.id,
-        is_hidden=video.is_hidden,
+        video_id=updated_video_id,
+        is_hidden=request.is_hidden,
     )

@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload
@@ -20,26 +19,21 @@ router = APIRouter(
 )
 
 
-@router.get(
-    "/me",
-    response_model=UserResponse,
-    status_code=status.HTTP_200_OK,
-)
-async def get_current_user(
+@router.get("/me", response_model=UserResponse)
+async def get_me(
     current_user: CurrentUser,
-) -> UserResponse:
-    return UserResponse.model_validate(current_user)
+) -> User:
+    return current_user
 
 
 @router.get(
     "/subscriptions",
     response_model=list[SubscribedChannelResponse],
-    status_code=status.HTTP_200_OK,
 )
 async def get_subscriptions(
     current_user: CurrentUser,
     db: DatabaseSession,
-) -> list[SubscribedChannelResponse]:
+) -> list[User]:
     result = await db.execute(
         select(User)
         .join(
@@ -49,75 +43,114 @@ async def get_subscriptions(
         .where(
             Subscription.subscriber_id == current_user.id,
         )
-        .order_by(User.created_at.desc())
+        .order_by(User.created_at.desc()),
     )
 
-    channels = result.scalars().all()
+    return list(result.scalars().all())
 
-    return [
-        SubscribedChannelResponse.model_validate(channel)
-        for channel in channels
-    ]
+
+@router.get(
+    "/{user_id}",
+    response_model=UserResponse,
+)
+async def get_user(
+    user_id: int,
+    db: DatabaseSession,
+) -> User:
+    result = await db.execute(
+        select(User).where(User.id == user_id),
+    )
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    return user
 
 
 @router.get(
     "/{user_id}/subscription",
     response_model=SubscriptionResponse,
-    status_code=status.HTTP_200_OK,
 )
 async def get_subscription_status(
     user_id: int,
     current_user: CurrentUser,
     db: DatabaseSession,
 ) -> SubscriptionResponse:
-    channel_exists = await db.scalar(
-        select(User.id).where(User.id == user_id)
+    result = await db.execute(
+        select(User).where(User.id == user_id),
     )
+    channel = result.scalar_one_or_none()
 
-    if channel_exists is None:
+    if channel is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
 
-    subscribed = False
-
-    if current_user.id != user_id:
-        subscription_exists = await db.scalar(
-            select(Subscription.id).where(
-                Subscription.subscriber_id == current_user.id,
-                Subscription.channel_id == user_id,
-            )
-        )
-
-        subscribed = subscription_exists is not None
-
-    subscribers_count = await db.scalar(
+    subscribers_result = await db.execute(
         select(func.count())
         .select_from(Subscription)
-        .where(Subscription.channel_id == user_id)
+        .where(Subscription.channel_id == user_id),
+    )
+    subscribers_count = subscribers_result.scalar_one()
+
+    if current_user.id == user_id:
+        return SubscriptionResponse(
+            subscribed=False,
+            subscribers_count=subscribers_count,
+        )
+
+    subscription_result = await db.execute(
+        select(Subscription).where(
+            Subscription.subscriber_id == current_user.id,
+            Subscription.channel_id == user_id,
+        ),
     )
 
     return SubscriptionResponse(
-        subscribed=subscribed,
-        subscribers_count=int(subscribers_count or 0),
+        subscribed=subscription_result.scalar_one_or_none() is not None,
+        subscribers_count=subscribers_count,
     )
+
+
+@router.get(
+    "/me/videos",
+    response_model=list[VideoListItem],
+)
+async def get_my_videos(
+    current_user: CurrentUser,
+    db: DatabaseSession,
+) -> list[Video]:
+    result = await db.execute(
+        select(Video)
+        .options(joinedload(Video.owner))
+        .where(
+            Video.owner_id == current_user.id,
+            Video.is_hidden.is_(False),
+        )
+        .order_by(Video.created_at.desc()),
+    )
+
+    return list(result.scalars().unique().all())
 
 
 @router.get(
     "/{user_id}/videos",
     response_model=list[VideoListItem],
-    status_code=status.HTTP_200_OK,
 )
 async def get_user_videos(
     user_id: int,
     db: DatabaseSession,
-) -> list[VideoListItem]:
-    user_exists = await db.scalar(
-        select(User.id).where(User.id == user_id)
+) -> list[Video]:
+    user_result = await db.execute(
+        select(User).where(User.id == user_id),
     )
 
-    if user_exists is None:
+    if user_result.scalar_one_or_none() is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
@@ -131,21 +164,15 @@ async def get_user_videos(
             Video.is_private.is_(False),
             Video.is_hidden.is_(False),
         )
-        .order_by(Video.created_at.desc())
+        .order_by(Video.created_at.desc()),
     )
 
-    videos = result.scalars().all()
-
-    return [
-        VideoListItem.model_validate(video)
-        for video in videos
-    ]
+    return list(result.scalars().unique().all())
 
 
 @router.post(
     "/{user_id}/subscribe",
     response_model=SubscriptionResponse,
-    status_code=status.HTTP_200_OK,
 )
 async def toggle_subscription(
     user_id: int,
@@ -158,11 +185,12 @@ async def toggle_subscription(
             detail="You cannot subscribe to your own channel",
         )
 
-    channel = await db.scalar(
+    channel_result = await db.execute(
         select(User)
         .where(User.id == user_id)
-        .with_for_update()
+        .with_for_update(),
     )
+    channel = channel_result.scalar_one_or_none()
 
     if channel is None:
         raise HTTPException(
@@ -170,34 +198,38 @@ async def toggle_subscription(
             detail="User not found",
         )
 
-    existing_subscription = await db.scalar(
+    subscription_result = await db.execute(
         select(Subscription).where(
             Subscription.subscriber_id == current_user.id,
             Subscription.channel_id == user_id,
-        )
+        ),
     )
+    subscription = subscription_result.scalar_one_or_none()
 
-    if existing_subscription is not None:
-        await db.delete(existing_subscription)
-        subscribed = False
-    else:
+    if subscription is None:
         db.add(
             Subscription(
                 subscriber_id=current_user.id,
                 channel_id=user_id,
-            )
+            ),
         )
         subscribed = True
+    else:
+        await db.delete(subscription)
+        subscribed = False
+
+    await db.flush()
+
+    count_result = await db.execute(
+        select(func.count())
+        .select_from(Subscription)
+        .where(Subscription.channel_id == user_id),
+    )
+    subscribers_count = count_result.scalar_one()
 
     await db.commit()
 
-    subscribers_count = await db.scalar(
-        select(func.count())
-        .select_from(Subscription)
-        .where(Subscription.channel_id == user_id)
-    )
-
     return SubscriptionResponse(
         subscribed=subscribed,
-        subscribers_count=int(subscribers_count or 0),
+        subscribers_count=subscribers_count,
     )

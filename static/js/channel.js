@@ -1,9 +1,11 @@
 import {
     apiRequest,
+    createVideoCard,
     getToken,
     initHeader,
     showMessage,
 } from "./common.js";
+
 
 const userId = new URLSearchParams(window.location.search).get("id");
 
@@ -11,44 +13,67 @@ const videosContainer = document.querySelector("#channel-videos");
 const message = document.querySelector("#channel-message");
 const channelTitle = document.querySelector("#channel-title");
 const channelDescription = document.querySelector("#channel-description");
+const channelSubscribers = document.querySelector("#channel-subscribers");
 const avatar = document.querySelector("#channel-avatar");
 const subscribeButton = document.querySelector("#subscribe-button");
-const subscribersElement = document.querySelector("#channel-subscribers");
 
-let currentUserId = null;
-let isSubscribed = false;
+let currentUser = null;
+let isOwnChannel = false;
 
-function updateSubscribeButton(subscribed) {
-    isSubscribed = subscribed;
 
-    subscribeButton.textContent = subscribed
+function renderVideos(videos) {
+    videosContainer.replaceChildren();
+
+    for (const video of videos) {
+        videosContainer.append(createVideoCard(video));
+    }
+}
+
+
+function renderSubscription(data) {
+    subscribeButton.textContent = data.subscribed
         ? "Отписаться"
         : "Подписаться";
 
-    subscribeButton.classList.toggle("button-secondary", subscribed);
-    subscribeButton.classList.toggle("button-primary", !subscribed);
+    channelSubscribers.textContent =
+        `${data.subscribers_count} подписчиков`;
 }
 
-function updateSubscribersCount(count) {
-    subscribersElement.textContent = `Подписчики: ${count}`;
-}
 
-async function loadSubscriptionStatus() {
-    if (!getToken() || !currentUserId || currentUserId === Number(userId)) {
+async function loadSubscription() {
+    if (!getToken() || isOwnChannel) {
         subscribeButton.hidden = true;
         return;
     }
 
-    try {
-        const result = await apiRequest(`/users/${userId}/subscription`);
+    const data = await apiRequest(
+        `/users/${encodeURIComponent(userId)}/subscription`,
+    );
 
-        updateSubscribeButton(result.subscribed);
-        updateSubscribersCount(result.subscribers_count);
-        subscribeButton.hidden = false;
-    } catch {
-        subscribeButton.hidden = true;
+    subscribeButton.hidden = false;
+    renderSubscription(data);
+}
+
+
+async function toggleSubscription() {
+    subscribeButton.disabled = true;
+
+    try {
+        const data = await apiRequest(
+            `/users/${encodeURIComponent(userId)}/subscribe`,
+            {
+                method: "POST",
+            },
+        );
+
+        renderSubscription(data);
+    } catch (error) {
+        showMessage(message, error.message);
+    } finally {
+        subscribeButton.disabled = false;
     }
 }
+
 
 async function loadChannel() {
     if (!userId || !/^\d+$/.test(userId)) {
@@ -57,92 +82,50 @@ async function loadChannel() {
     }
 
     try {
-        const videos = await apiRequest(`/users/${userId}/videos`);
+        const profile = await apiRequest(
+            `/users/${encodeURIComponent(userId)}`,
+        );
+
+        channelTitle.textContent = profile.email;
+        channelDescription.textContent = "Канал пользователя";
+        avatar.textContent = profile.email.charAt(0).toUpperCase();
 
         if (getToken()) {
             try {
-                const currentUser = await apiRequest("/users/me");
-                currentUserId = currentUser.id;
+                currentUser = await apiRequest("/users/me");
             } catch {
-                currentUserId = null;
+                currentUser = null;
             }
         }
 
-        channelTitle.textContent = `Канал #${userId}`;
-        channelDescription.textContent = videos.length > 0
-            ? `Видео пользователя #${userId}`
-            : "Публичных видео пока нет.";
+        isOwnChannel = currentUser?.id === profile.id;
 
-        avatar.textContent = "U";
+        const videos = isOwnChannel
+            ? await apiRequest("/users/me/videos")
+            : await apiRequest(
+                `/users/${encodeURIComponent(userId)}/videos`,
+            );
 
-        if (videos.length > 0) {
-            const email = videos[0].owner.email;
-
-            channelTitle.textContent = email;
-            avatar.textContent = email.charAt(0).toUpperCase();
-        }
-
-        await loadSubscriptionStatus();
+        renderVideos(videos);
 
         if (videos.length === 0) {
             showMessage(
                 message,
-                "На этом канале пока нет публичных видео.",
+                isOwnChannel
+                    ? "У вас пока нет видео."
+                    : "На этом канале пока нет публичных видео.",
                 "info",
             );
-            return;
         }
 
-        for (const video of videos) {
-            const article = document.createElement("article");
-            article.className = "video-card";
-
-            const previewLink = document.createElement("a");
-            previewLink.className = "video-preview";
-            previewLink.href = `/video.html?id=${encodeURIComponent(video.id)}`;
-            previewLink.textContent = "▶";
-
-            const content = document.createElement("div");
-            content.className = "video-card-content";
-
-            const title = document.createElement("a");
-            title.className = "video-card-title";
-            title.href = previewLink.href;
-            title.textContent = video.title;
-
-            const meta = document.createElement("p");
-            meta.className = "video-card-meta";
-            meta.textContent = `${video.views_count} просмотров`;
-
-            content.append(title, meta);
-            article.append(previewLink, content);
-            videosContainer.append(article);
-        }
+        await loadSubscription();
     } catch (error) {
         showMessage(message, error.message);
     }
 }
 
-subscribeButton.addEventListener("click", async () => {
-    if (!userId || !getToken()) {
-        return;
-    }
 
-    subscribeButton.disabled = true;
-
-    try {
-        const result = await apiRequest(`/users/${userId}/subscribe`, {
-            method: "POST",
-        });
-
-        updateSubscribeButton(result.subscribed);
-        updateSubscribersCount(result.subscribers_count);
-    } catch (error) {
-        showMessage(message, error.message);
-    } finally {
-        subscribeButton.disabled = false;
-    }
-});
+subscribeButton.addEventListener("click", toggleSubscription);
 
 await initHeader();
 await loadChannel();

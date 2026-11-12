@@ -4,39 +4,35 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import decode_access_token
 from app.database import get_db
 from app.models.user import User, UserRole
-from app.services.auth import get_user_by_email
 
 
-security = HTTPBearer(
-    auto_error=False,
-)
+security = HTTPBearer(auto_error=False)
 
 
-async def get_current_user(
+async def get_optional_current_user(
     credentials: Annotated[
         HTTPAuthorizationCredentials | None,
         Depends(security),
     ],
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> User:
+) -> User | None:
+    if credentials is None:
+        return None
+
     unauthorized_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid or expired authentication token",
         headers={"WWW-Authenticate": "Bearer"},
     )
 
-    if credentials is None:
-        raise unauthorized_exception
-
     try:
-        payload = decode_access_token(
-            credentials.credentials,
-        )
+        payload = decode_access_token(credentials.credentials)
 
         subject = payload.get("sub")
         token_type = payload.get("type")
@@ -53,18 +49,31 @@ async def get_current_user(
     except (JWTError, ValueError):
         raise unauthorized_exception from None
 
-    from sqlalchemy import select
-
     result = await db.execute(
         select(User).where(User.id == user_id),
     )
-
     user = result.scalar_one_or_none()
 
     if user is None:
         raise unauthorized_exception
 
     return user
+
+
+async def get_current_user(
+    optional_user: Annotated[
+        User | None,
+        Depends(get_optional_current_user),
+    ],
+) -> User:
+    if optional_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired authentication token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return optional_user
 
 
 def require_roles(
@@ -90,6 +99,11 @@ def require_roles(
 CurrentUser = Annotated[
     User,
     Depends(get_current_user),
+]
+
+OptionalCurrentUser = Annotated[
+    User | None,
+    Depends(get_optional_current_user),
 ]
 
 DatabaseSession = Annotated[

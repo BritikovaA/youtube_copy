@@ -5,42 +5,45 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>YouTube Copy</title>
     <link rel="stylesheet" href="/css/style.css">
-    <script type="module" src="/js/home.js"></script>
+    <script type="module" src="/js/index.js"></script>
 </head>
 <body>
     <header class="site-header">
-        <a class="logo" href="/">YouTube Copy</a>
+        <a class="site-logo" href="/">YouTube Copy</a>
 
         <nav class="header-nav">
             <a href="/">Главная</a>
-            <a href="/upload.html" id="upload-link" hidden>Загрузить видео</a>
+            <a id="upload-link" href="/upload.html" hidden>Загрузить видео</a>
         </nav>
 
-        <div class="header-actions" id="auth-actions">
-            <a class="button button-secondary" href="/auth.html?mode=login">Войти</a>
-            <a class="button button-primary" href="/auth.html?mode=register">Регистрация</a>
+        <div id="auth-actions" class="header-actions">
+            <a class="button button-secondary" href="/auth.html?mode=login">
+                Войти
+            </a>
+            <a class="button button-primary" href="/auth.html?mode=register">
+                Регистрация
+            </a>
         </div>
     </header>
 
     <main class="container">
-        <section class="search-section">
+        <form id="search-form" class="search-form">
+            <input
+                id="search-input"
+                type="search"
+                placeholder="Поиск видео"
+            >
+            <button class="button button-primary" type="submit">
+                Найти
+            </button>
+        </form>
+
+        <p id="videos-message" class="message" hidden></p>
+
+        <section>
             <h1>Видео</h1>
-
-            <form id="search-form" class="search-form">
-                <input
-                    type="search"
-                    id="search-input"
-                    placeholder="Поиск видео..."
-                    maxlength="255"
-                >
-                <button type="submit" class="button button-primary">
-                    Найти
-                </button>
-            </form>
+            <div id="videos-list" class="videos-grid"></div>
         </section>
-
-        <div id="videos-message" class="message" hidden></div>
-        <section id="videos-list" class="videos-grid"></section>
     </main>
 </body>
 </html>

@@ -3,38 +3,55 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Канал — YouTube Copy</title>
+    <title>Канал</title>
     <link rel="stylesheet" href="/css/style.css">
     <script type="module" src="/js/channel.js"></script>
 </head>
 <body>
     <header class="site-header">
-        <a class="logo" href="/">YouTube Copy</a>
+        <a class="site-logo" href="/">YouTube Copy</a>
 
         <nav class="header-nav">
             <a href="/">Главная</a>
-            <a href="/upload.html" id="upload-link" hidden>Загрузить видео</a>
+            <a id="upload-link" href="/upload.html" hidden>Загрузить видео</a>
         </nav>
 
-        <div class="header-actions" id="auth-actions">
-            <a class="button button-secondary" href="/auth.html?mode=login">Войти</a>
-            <a class="button button-primary" href="/auth.html?mode=register">Регистрация</a>
+        <div id="auth-actions" class="header-actions">
+            <a class="button button-secondary" href="/auth.html?mode=login">
+                Войти
+            </a>
+            <a class="button button-primary" href="/auth.html?mode=register">
+                Регистрация
+            </a>
         </div>
     </header>
 
     <main class="container">
         <section class="channel-header">
-            <div class="channel-avatar" id="channel-avatar">U</div>
-            <div>
-                <h1 id="channel-title">Канал пользователя</h1>
+            <div id="channel-avatar" class="channel-avatar">U</div>
+
+            <div class="channel-header-content">
+                <h1 id="channel-title">Загрузка канала...</h1>
                 <p id="channel-description"></p>
+                <p id="channel-subscribers" class="channel-subscribers"></p>
+
+                <button
+                    id="subscribe-button"
+                    class="button button-primary"
+                    type="button"
+                    hidden
+                >
+                    Подписаться
+                </button>
             </div>
         </section>
 
-        <h2>Видео канала</h2>
+        <p id="channel-message" class="message" hidden></p>
 
-        <div id="channel-message" class="message" hidden></div>
-        <section id="channel-videos" class="videos-grid"></section>
+        <section>
+            <h2>Видео</h2>
+            <div id="channel-videos" class="videos-grid"></div>
+        </section>
     </main>
 </body>
 </html>

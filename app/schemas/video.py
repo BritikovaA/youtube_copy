@@ -28,6 +28,7 @@ class VideoListItem(VideoResponse):
 
 class VideoDetailResponse(VideoListItem):
     video_url: str
+    likes_count: int
 
 
 class VideoUploadResponse(BaseModel):
