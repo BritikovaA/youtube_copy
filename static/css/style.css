@@ -354,6 +354,8 @@ textarea:focus {
     overflow-wrap: anywhere;
 }
 
+/* Channel */
+
 .channel-header {
     display: flex;
     align-items: center;
@@ -391,6 +393,107 @@ textarea:focus {
     color: #666;
     font-weight: 700;
 }
+
+/* Comments */
+
+.comments-section {
+    margin-top: 32px;
+}
+
+.comments-section h2 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.comments-count {
+    color: #666;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.comments-auth-message {
+    margin-bottom: 20px;
+    padding: 14px 16px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}
+
+.comment-form {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 24px;
+    padding: 18px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}
+
+.comment-form label {
+    font-weight: 700;
+}
+
+.comment-form textarea {
+    min-height: 90px;
+    resize: vertical;
+    line-height: 1.5;
+}
+
+.comment-form button {
+    align-self: flex-end;
+}
+
+.comments-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.comment-item {
+    padding: 16px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}
+
+.comment-header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.comment-author {
+    font-weight: 700;
+}
+
+.comment-date {
+    color: #777;
+    font-size: 13px;
+}
+
+.comment-text {
+    margin: 0;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.comments-empty {
+    margin: 0;
+    padding: 16px;
+    color: #666;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}
+
+/* Auth and upload */
 
 .auth-form,
 .upload-form {
@@ -464,10 +567,12 @@ textarea:focus {
     .video-actions {
         align-items: flex-start;
     }
-}
 
-.upload-form label:has(input[type="checkbox"]) {
-    flex-direction: row;
-    align-items: center;
-    gap: 12px;
+    .comment-form {
+        padding: 14px;
+    }
+
+    .comment-form button {
+        width: 100%;
+    }
 }

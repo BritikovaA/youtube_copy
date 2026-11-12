@@ -13,7 +13,9 @@
 
         <nav class="header-nav">
             <a href="/">Главная</a>
-            <a id="upload-link" href="/upload.html" hidden>Загрузить видео</a>
+            <a id="upload-link" href="/upload.html" hidden>
+                Загрузить видео
+            </a>
         </nav>
 
         <div id="auth-actions" class="header-actions">
@@ -75,7 +77,45 @@
             <div class="video-description">
                 <p id="video-description"></p>
             </div>
+
+            <section class="comments-section">
+                <h2>
+                    Комментарии
+                    <span id="comments-count" class="comments-count">0</span>
+                </h2>
+
+                <div id="comments-auth-message" class="comments-auth-message" hidden>
+                    <a href="/auth.html?mode=login">Войдите</a>,
+                    чтобы оставить комментарий.
+                </div>
+
+                <form id="comment-form" class="comment-form" hidden>
+                    <label for="comment-input">Ваш комментарий</label>
+
+                    <textarea
+                        id="comment-input"
+                        name="text"
+                        rows="3"
+                        placeholder="Напишите комментарий..."
+                        required
+                    ></textarea>
+
+                    <button
+                        id="comment-submit"
+                        class="button button-primary"
+                        type="submit"
+                    >
+                        Отправить
+                    </button>
+                </form>
+
+                <p id="comments-message" class="message" hidden></p>
+
+                <div id="comments-list" class="comments-list"></div>
+            </section>
         </section>
+
+        <p id="video-page-message" class="message" hidden></p>
     </main>
 </body>
 </html>

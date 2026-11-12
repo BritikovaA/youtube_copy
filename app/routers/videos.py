@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy import func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.core.dependencies import (
@@ -9,8 +10,13 @@ from app.core.dependencies import (
     DatabaseSession,
     OptionalCurrentUser,
 )
-from app.models.user import UserRole
-from app.models.video import Video, VideoLike
+from app.models.user import User, UserRole
+from app.models.video import Comment, Video, VideoLike
+from app.schemas.comment import (
+    CommentAuthorResponse,
+    CommentCreateRequest,
+    CommentResponse,
+)
 from app.schemas.video import (
     VideoDetailResponse,
     VideoLikeResponse,
@@ -37,7 +43,7 @@ router = APIRouter(
 
 
 async def get_likes_count(
-    db: DatabaseSession,
+    db: AsyncSession,
     video_id: int,
 ) -> int:
     result = await db.execute(
@@ -47,6 +53,37 @@ async def get_likes_count(
     )
 
     return result.scalar_one()
+
+
+async def get_accessible_video(
+    video_id: int,
+    db: AsyncSession,
+    current_user: User | None,
+) -> Video:
+    result = await db.execute(
+        select(Video).where(Video.id == video_id),
+    )
+    video = result.scalar_one_or_none()
+
+    if video is None or video.is_hidden:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found",
+        )
+
+    if (
+        video.is_private
+        and (
+            current_user is None
+            or current_user.id != video.owner_id
+        )
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video not found",
+        )
+
+    return video
 
 
 @router.post(
@@ -62,6 +99,8 @@ async def upload_video_endpoint(
     description: Annotated[str | None, Form()] = None,
     is_private: Annotated[bool, Form()] = False,
 ) -> VideoUploadResponse:
+    file_path: str | None = None
+
     try:
         await validate_video(file)
 
@@ -86,7 +125,7 @@ async def upload_video_endpoint(
     except Exception:
         await db.rollback()
 
-        if "file_path" in locals():
+        if file_path is not None:
             await delete_object(file_path)
 
         raise
@@ -161,7 +200,6 @@ async def get_video(
     await db.refresh(video)
 
     likes_count = await get_likes_count(db, video_id)
-
     video_url = await create_video_presigned_url(video.file_path)
 
     return VideoDetailResponse(
@@ -179,6 +217,76 @@ async def get_video(
 
 
 @router.get(
+    "/{video_id}/comments",
+    response_model=list[CommentResponse],
+)
+async def get_video_comments(
+    video_id: int,
+    db: DatabaseSession,
+    current_user: OptionalCurrentUser,
+) -> list[CommentResponse]:
+    await get_accessible_video(video_id, db, current_user)
+
+    result = await db.execute(
+        select(Comment, User)
+        .join(User, User.id == Comment.user_id)
+        .where(Comment.video_id == video_id)
+        .order_by(Comment.created_at.desc()),
+    )
+
+    rows = result.all()
+
+    return [
+        CommentResponse(
+            id=comment.id,
+            video_id=comment.video_id,
+            user_id=comment.user_id,
+            text=comment.text,
+            created_at=comment.created_at,
+            author=CommentAuthorResponse.model_validate(user),
+        )
+        for comment, user in rows
+    ]
+
+
+@router.post(
+    "/{video_id}/comments",
+    response_model=CommentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_video_comment(
+    video_id: int,
+    request: CommentCreateRequest,
+    current_user: CurrentUser,
+    db: DatabaseSession,
+) -> CommentResponse:
+    video = await get_accessible_video(
+        video_id,
+        db,
+        current_user,
+    )
+
+    comment = Comment(
+        video_id=video.id,
+        user_id=current_user.id,
+        text=request.text,
+    )
+
+    db.add(comment)
+    await db.commit()
+    await db.refresh(comment)
+
+    return CommentResponse(
+        id=comment.id,
+        video_id=comment.video_id,
+        user_id=comment.user_id,
+        text=comment.text,
+        created_at=comment.created_at,
+        author=CommentAuthorResponse.model_validate(current_user),
+    )
+
+
+@router.get(
     "/{video_id}/like",
     response_model=VideoLikeResponse,
 )
@@ -187,31 +295,7 @@ async def get_video_like_status(
     db: DatabaseSession,
     current_user: OptionalCurrentUser,
 ) -> VideoLikeResponse:
-    video_result = await db.execute(
-        select(Video).where(
-            Video.id == video_id,
-            Video.is_hidden.is_(False),
-        ),
-    )
-    video = video_result.scalar_one_or_none()
-
-    if video is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Video not found",
-        )
-
-    if (
-        video.is_private
-        and (
-            current_user is None
-            or current_user.id != video.owner_id
-        )
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Video not found",
-        )
+    await get_accessible_video(video_id, db, current_user)
 
     likes_count = await get_likes_count(db, video_id)
 
