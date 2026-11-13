@@ -16,3 +16,6 @@ pwdlib[argon2]
 python-multipart
 
 aioboto3
+
+pytest
+httpx
